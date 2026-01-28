@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Request
 import requests
 
 app = FastAPI()
@@ -10,49 +10,76 @@ MY_SECRET = "NIZAR_SECURE_2026"
 
 @app.get("/")
 def home():
-    return {"status": "Online", "System": "Gateway V4 (Form Data) 🚀"}
+    return {"status": "Online", "System": "Gateway Universal V5 🚀"}
 
-# استخدمنا Form بدلاً من BaseModel لنقبل بيانات موقعك
 @app.post("/api/Buy")
-async def process_order(
-    token: str = Form(...),       # إجباري
-    numberId: str = Form(...),    # إجباري
-    note1: str = Form(...),       # رقم المنتج (257)
-    note2: str = Form(None),      # اختياري (للزون)
-    orderId: str = Form(None)     # اختياري
-):
+@app.get("/api/Buy") # احتياطاً لو الموقع بعت GET
+async def process_order(request: Request):
     
-    # 1. فحص التوكن
-    if token != MY_SECRET:
-        return {"error": "Invalid Token", "ws": {"detail": "Auth Failed"}}
+    # 1. تجميع البيانات من كل المصادر الممكنة (الجوكر) 🃏
+    data = {}
+    
+    # أ. تجريب قراءة البيانات من الرابط (Query Params)
+    data.update(request.query_params)
+    
+    # ب. تجريب قراءة البيانات من الفورم (Form Data)
+    try:
+        form = await request.form()
+        data.update(form)
+    except:
+        pass
+        
+    # ج. تجريب قراءة البيانات كـ JSON
+    try:
+        json_body = await request.json()
+        if isinstance(json_body, dict):
+            data.update(json_body)
+    except:
+        pass
 
-    # 2. تحويل رقم المنتج (257) لطلب المورد
+    # الآن البيانات صارت بمتغير اسمه data مهما كان مصدرها
+    
+    # 2. استخراج الحقول المطلوبة
+    token = data.get("token")
+    numberId = data.get("numberId")
+    note1 = data.get("note1")
+    note2 = data.get("note2")
+    orderId_site = data.get("orderId")
+
+    # 3. التحقق من التوكن
+    if token != MY_SECRET:
+        # طباعة المشكلة باللوج لمساعدتك
+        return {
+            "status": "error", 
+            "message": "Invalid Token or Missing Data", 
+            "debug_received": list(data.keys()) # بنرجعلك شو الحقول اللي وصلت عشان نتأكد
+        }
+
+    # 4. تحويل رقم المنتج (257) لطلب المورد
     products_map = {
         "257": {"game": "pubg", "pack": "60_uc"},         
         "258": {"game": "freefire", "pack": "100_diamonds"}, 
         "259": {"game": "mobilelegend", "pack": "86"}     
     }
 
-    item = products_map.get(note1)
+    item = products_map.get(str(note1)) # حولنا لسترينغ احتياطاً
     
     if not item:
-        return {"error": f"Product {note1} not configured in Gateway"}
+        return {"status": "error", "message": f"Product {note1} not found"}
 
-    # 3. تجهيز الطلب
+    # 5. تجهيز الطلب
     payload = {
         "game": item["game"],
         "pack": item["pack"],
         "uid": numberId
     }
     
-    # معالجة خاصة لـ Mobile Legends
     if item["game"] == "mobilelegend":
-        # إذا الزون غير موجود أو عبارة عن شرطة "-"
-        if not note2 or note2 == "-":
-             return {"error": "Zone ID is required for MLBB", "ws": {"detail": "Missing Zone"}}
+        if not note2 or str(note2) == "-":
+             return {"status": "error", "message": "Zone ID missing"}
         payload["zoneId"] = note2
 
-    # 4. الشراء الفعلي
+    # 6. الشراء
     headers = {"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}
     
     try:
@@ -63,7 +90,7 @@ async def process_order(
             return {
                 "status": "completed", 
                 "order_id": result["data"]["orderId"],
-                "api_order_id": orderId # بنرجع نفس الرقم اللي وصلنا
+                "api_order_id": orderId_site
             }
         else:
             return {"status": "error", "message": result.get("error")}
