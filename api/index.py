@@ -100,13 +100,14 @@ async def process_order(request: Request):
 
       # ... (بعد ما يرجع الرد من المورد) ...
 
-        if result.get("success"):
-            # ✅ الرد الجديد: خذ الرقم وتابع معنا
+       if result.get("success"):
+            # ✅ هون الحل: بنعطي الموقع الرقم اللي بدو ياه
             return {
-                "status": "processing",  # يعني: قيد المعالجة (مش خالص)
-                "transaction_id": result["data"]["orderId"], # رقم المورد (المهم)
-                "your_order_id": orderId_site, # رقم موقعك
-                "message": "Order submitted successfully. Please poll /api/check_status to get final result."
+                "status": "processing",           # بنقله: جاري المعالجة
+                "order_id": result["data"]["orderId"], # 👈 هذا هو "رقم العملية" اللي ناطره موقعك (GO-xxxxx)
+                "api_order_id": orderId_site,     # وبنرجعله رقم طلبه هو عشان التأكيد
+                "message": "Transaction initiated. Track using order_id."
+            }
             }
         else:
             # في حال المورد رفض فوراً
@@ -117,5 +118,6 @@ async def process_order(request: Request):
             }
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
