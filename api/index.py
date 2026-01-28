@@ -8,14 +8,14 @@ app = FastAPI()
 
 # --- إعدادات المورد ---
 SUPPLIER_URL = "https://api.sonofutred.uk/api/v1"
-SUPPLIER_API_KEY = "j5OXE9NqqCa2JoUXotEQGWDum6lmvFgA" # ⚠️ حط مفتاحك
+SUPPLIER_API_KEY = "YOUR_REAL_API_KEY_HERE" # ⚠️ مفتاحك الحقيقي
 MY_SECRET = "NIZAR_SECURE_2026"
 
-# ✅ هاد السطر بيستقبل أي رابط بتخترعه اللوحة (/buy, /Buy, /order...)
+# المصيدة: نستقبل أي رابط
 @app.api_route("/api/{path_name:path}", methods=["GET", "POST"])
 async def catch_all(request: Request, path_name: str):
     
-    # 1. توليد رقم العملية فوراً
+    # 1. توليد رقم العملية (رح نحطه بخانة operationId)
     gateway_id = random.randint(10000000, 99999999)
 
     # 2. تجميع البيانات
@@ -39,12 +39,16 @@ async def catch_all(request: Request, path_name: str):
     note1 = str(data.get("note1", "")).strip()
     note2 = data.get("note2")       
 
-    # 3. التحقق (شكلي)
+    # 3. التحقق
     if token != MY_SECRET:
-        # بنرجع رقم حتى لو التوكن غلط عشان اللوحة ما تعلق
-        return JSONResponse(content={"order": gateway_id, "error": "Invalid Token"})
+        # بنقلد رد الفشل تبع Ayome
+        return JSONResponse(content={
+            "isSuccess": False,
+            "result": "Invalid Token",
+            "operationId": 0
+        })
 
-    # 4. محاولة الإرسال للمورد (بدون ما ننتظر النتيجة)
+    # 4. محاولة الإرسال للمورد (بدون انتظار)
     products_map = {"257": {"game": "mobilelegend", "pack": "86"}}
     item = products_map.get(note1)
     
@@ -54,7 +58,7 @@ async def catch_all(request: Request, path_name: str):
         
         final_uid = numberId
         final_zone_id = ""
-        # (نفس كود المعالجة السابق للموبايل ليجند)
+        # معالجة الآيدي والزون (نفس الكود السابق)
         if game == "mobilelegend":
             if note2 and str(note2) != "-": final_zone_id = str(note2)
             elif " " in numberId: 
@@ -77,12 +81,18 @@ async def catch_all(request: Request, path_name: str):
         except:
             pass
 
-    # 5. الرد الشامل (المهم)
-    # حطينا الرقم كـ Int وكـ String وبكل الأسماء
+    # 5. الرد المستنسخ (Ayome Style) 🐑✅
+    # هذا الرد نفس شكل اللوج الناجح بالضبط
     return JSONResponse(content={
-        "status": "success",
-        "order": gateway_id,       # للوحات اللي بدها رقم
-        "id": gateway_id,          # للوحات اللي بدها id
-        "order_id": gateway_id,    # للوحات القديمة
-        "order_id_string": str(gateway_id) # احتياط
+        "isSuccess": True,                   # المفتاح السحري للقبول
+        "operationId": str(gateway_id),      # هون اللوحة بتدور عالرقم
+        "result": "تم تسجيل الطلب بنجاح",    # رسالة النجاح
+        "value": 0,
+        "isDirectableToManual": False,
+        "isRepeatableFailedBuy": True,
+        "creditAfter": -1,
+        
+        # زيادة احتياط: بنخلي القديمين كمان
+        "order": gateway_id,
+        "id": gateway_id
     })
