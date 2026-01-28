@@ -24,7 +24,7 @@ def home():
     return {"status": "Online", "System": "Gateway V2 🚀"}
 
 # --- الرابط الأول: إرسال الطلب ---
-@app.post("/api/buy")
+@app.post("/api/Buy")
 def process_order(order: OrderRequest):
     if order.api_secret != MY_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -96,4 +96,5 @@ def check_status(req: CheckRequest):
 
     except Exception as e:
          return {"success": False, "message": str(e)}
+
 
