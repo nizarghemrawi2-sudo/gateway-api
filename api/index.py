@@ -57,7 +57,7 @@ async def process_order(request: Request):
 
     # 4. تحويل رقم المنتج (257) لطلب المورد
     products_map = {
-        "257": {"game": "pubg", "pack": "60_uc"},         
+        "257": {"game": "mobilelegend", "pack": "257"},         
         "258": {"game": "freefire", "pack": "100_diamonds"}, 
         "259": {"game": "mobilelegend", "pack": "86"}     
     }
@@ -97,3 +97,4 @@ async def process_order(request: Request):
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
