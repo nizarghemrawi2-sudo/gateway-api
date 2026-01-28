@@ -14,10 +14,7 @@ MY_SECRET = "NIZAR_SECURE_2026"
 @app.api_route("/api/{path_name:path}", methods=["GET", "POST"])
 async def catch_all(request: Request, path_name: str):
     
-    # 1. توليد رقم العملية
-    gateway_id = random.randint(10000000, 99999999)
-
-    # 2. تجميع البيانات
+    # 1. تجميع البيانات
     data = {}
     data.update(request.query_params)
     try:
@@ -32,6 +29,7 @@ async def catch_all(request: Request, path_name: str):
     except:
         pass
 
+    # استخراج البيانات
     token = data.get("token")
     numberId = str(data.get("numberId", "")).strip()
     note1 = str(data.get("note1", "")).strip()
@@ -41,18 +39,19 @@ async def catch_all(request: Request, path_name: str):
     if token != MY_SECRET:
         return JSONResponse(content={
             "isSuccess": False,
-            "operationId": str(gateway_id),
+            "operationId": "0", # ⛔ صفر يعني فشل
             "result": "Invalid Token",
             "value": 0
         })
 
-    # 3. تجهيز الطلب
+    # 2. تجهيز الطلب للمورد
     products_map = {"257": {"game": "mobilelegend", "pack": "86"}}
     item = products_map.get(note1)
     
-    # متغيرات النتيجة النهائية
+    # متغيرات النتيجة
     final_success = False
-    final_message = "General Error"
+    final_message = "Error"
+    final_op_id = "0" # الافتراضي صفر (فشل)
 
     if item:
         game = item["game"]
@@ -78,31 +77,36 @@ async def catch_all(request: Request, path_name: str):
 
         headers = {"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}
 
-        # 4. محاولة الإرسال والحصول على النتيجة الحقيقية
+        # 3. التواصل الحقيقي مع المورد
         try:
             response = requests.post(f"{SUPPLIER_URL}/orders/game", json=payload, headers=headers, timeout=10)
             result_json = response.json()
             
             if result_json.get("success"):
+                # ✅ حالة النجاح: بنولد رقم وبنرجع True
                 final_success = True
                 final_message = "تم تسجيل الطلب بنجاح"
+                final_op_id = str(random.randint(10000000, 99999999)) # رقم العملية
             else:
+                # ❌ حالة الفشل من المورد (رصيد، خطأ..)
                 final_success = False
-                final_message = result_json.get("error", "Failed from Supplier")
+                final_message = result_json.get("error", "Supplier Error")
+                final_op_id = "0" # بنرجع صفر عشان اللوحة تفهم إنه فشل
                 
         except Exception as e:
-            # في حال الحظر أو فشل الاتصال
+            # ⛔ حالة الفشل بالاتصال (مثل حظر الآيبي)
             final_success = False
             final_message = "Connection Failed / IP Blocked"
+            final_op_id = "0" # صفر يعني فشل
     else:
         final_message = "Product Not Found"
+        final_op_id = "0"
 
-    # 5. الرد الذكي (Ayome Style)
-    # بنرجع الحالة الحقيقية (نجاح أو فشل) بس مع المحافظة على الهيكلية عشان ما يطلع null
+    # 4. الرد النهائي
     return JSONResponse(content={
-        "isSuccess": final_success,          # ✅ هون رح يطلع False إذا في حظر
-        "operationId": str(gateway_id),      # ✅ الرقم موجود دائماً
-        "result": final_message,             # ✅ رسالة الخطأ رح تظهر باللوحة
+        "isSuccess": final_success,          # True أو False
+        "operationId": final_op_id,          # رقم أو صفر
+        "result": final_message,             # رسالة الخطأ
         "value": 0,
         "isDirectableToManual": False,
         "isRepeatableFailedBuy": True,
