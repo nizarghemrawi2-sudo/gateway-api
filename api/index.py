@@ -2,19 +2,20 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import requests
 import re
-import json
+import asyncio
+import random
 
 app = FastAPI()
 
 # --- إعدادات المورد ---
 SUPPLIER_URL = "https://api.sonofutred.uk/api/v1"
-SUPPLIER_API_KEY = "j5OXE9NqqCa2JoUXotEQGWDum6lmvFgA" # ⚠️ مفتاحك الحقيقي
+SUPPLIER_API_KEY = "YOUR_REAL_API_KEY_HERE" # ⚠️ مفتاحك الحقيقي
 MY_SECRET = "NIZAR_SECURE_2026"
 
 @app.api_route("/api/{path_name:path}", methods=["GET", "POST"])
 async def handle_request(request: Request, path_name: str):
     
-    # تجميع البيانات (Get + Post + JSON)
+    # تجميع البيانات
     data = dict(request.query_params)
     try:
         form = await request.form()
@@ -25,21 +26,7 @@ async def handle_request(request: Request, path_name: str):
         if isinstance(json_body, dict): data.update(json_body)
     except: pass
 
-    # تحديد نوع العملية (شراء أم فحص حالة؟)
-    action = data.get("action")
-    
-    # 1. إذا كان طلب فحص حالة (Status Check)
-    if action == "status":
-        return await check_status(data)
-    
-    # 2. إذا كان طلب شراء (Buy / Add)
-    else:
-        return await process_order(data)
-
-# -----------------------------------------------------------
-# دالة معالجة الطلب (Buy)
-# -----------------------------------------------------------
-async def process_order(data):
+    # استخراج البيانات
     token = data.get("token")
     numberId = str(data.get("numberId", "")).strip()
     note1 = str(data.get("note1", "")).strip()
@@ -59,7 +46,7 @@ async def process_order(data):
     game = item["game"]
     pack = item["pack"]
     
-    # معالجة الآيدي
+    # معالجة الآيدي والزون
     final_uid = numberId
     final_zone_id = ""
     if game == "mobilelegend":
@@ -79,95 +66,81 @@ async def process_order(data):
     headers = {"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}
 
     try:
-        # إرسال للمورد
+        # 1. إرسال الطلب الأولي
         response = requests.post(f"{SUPPLIER_URL}/orders/game", json=payload, headers=headers, timeout=15)
         result_json = response.json()
         
         if result_json.get("success"):
-            # ✅ أهم نقطة: بناخد رقم المورد الحقيقي
-            # المورد غالباً بيرجع {"success": true, "id": 554433}
+            # الطلب انقبل مبدئياً، وجبنا الرقم الحقيقي
             real_order_id = str(result_json.get("id") or result_json.get("order"))
-            return response_ayome(True, real_order_id, "تم الارسال بنجاح")
+            
+            # 🔥 الحل السحري: الانتظار والمراقبة 🔥
+            # رح ننتظر 8 ثواني ونفحص الحالة قبل ما نرد على اللوحة
+            # أغلب مشاكل الحظر أو الرصيد بتبين بأول كم ثانية
+            
+            final_status_check = await wait_and_check(real_order_id)
+            
+            if final_status_check == "Canceled":
+                # لقطناه! رفض الطلب بسرعة
+                return response_ayome(False, None, "Failed immediately by Supplier")
+            else:
+                # لسا ما بين شي، مضطرين نعطي نجاح
+                return response_ayome(True, real_order_id, "تم الارسال (قيد المعالجة)")
         else:
-            # فشل فوري
+            # رفض فوري من البداية
             error_msg = result_json.get("error", "Failed")
             return response_ayome(False, None, error_msg)
             
     except Exception as e:
         return response_ayome(False, None, f"Connection Error: {str(e)}")
 
+
 # -----------------------------------------------------------
-# دالة فحص الحالة (Status Check)
+# دالة الانتظار (بتضل تفحص المورد لمدة 8 ثواني)
 # -----------------------------------------------------------
-async def check_status(data):
-    # اللوحة بتبعت الآيدي تبعنا اللي خزنته عندها
-    order_id = data.get("order") or data.get("id")
+async def wait_and_check(order_id):
+    headers = {"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}
     
-    if not order_id:
-        return JSONResponse(content={"status": "Error", "error": "Missing ID"})
-
-    # بنسأل المورد عن هاد الرقم
-    # ملاحظة: تأكد من رابط فحص الحالة عند موردك، غالباً هو /orders/status
-    try:
-        headers = {"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}
-        payload = {"order": order_id} # بعض الموردين بدهم {"ids": "1,2"}
-        
-        # بنجرب نبعت طلب فحص للمورد
-        # تنويه: هون لازم تكون عارف رابط الـ Status عند المورد بالضبط
-        # رح افترض إنه هيك بناء على الرابط الأساسي
-        res = requests.post(f"{SUPPLIER_URL.replace('/orders/game', '')}/orders/status", json=payload, headers=headers, timeout=10)
-        
-        # إذا الرابط غلط بنجرب الطريقة القياسية
-        if res.status_code == 404:
-             res = requests.post("https://api.sonofutred.uk/api/v1/orders/status", json={"ids": order_id}, headers=headers)
-
-        res_json = res.json()
-        
-        # تحليل رد المورد وترجمته للوحتك
-        # رد المورد المتوقع: {"status": "Canceled", ...} أو {"123": {"status": "Canceled"}}
-        
-        supplier_status = ""
-        
-        if isinstance(res_json, dict):
-            # حالة 1: الرد مباشر
-            if "status" in res_json:
-                supplier_status = res_json["status"]
-            # حالة 2: الرد قاموس آيديات
-            elif order_id in res_json:
-                supplier_status = res_json[order_id].get("status")
-        
-        # الترجمة (Mapping)
-        final_status = "Pending" # الافتراضي
-        s_lower = str(supplier_status).lower()
-        
-        if "cancel" in s_lower or "fail" in s_lower or "refund" in s_lower:
-            final_status = "Canceled"
-        elif "complet" in s_lower or "success" in s_lower or "done" in s_lower:
-            final_status = "Completed"
-        elif "process" in s_lower or "pend" in s_lower:
-            final_status = "Pending"
+    # نجرب نفحص 3 مرات خلال 6-8 ثواني
+    for _ in range(3):
+        await asyncio.sleep(2) # نام ثانيتين
+        try:
+            # طلب فحص الحالة من المورد
+            # (افترضنا رابط الحالة هيك، عدله اذا بتعرفه)
+            res = requests.post(
+                f"{SUPPLIER_URL.replace('/orders/game', '')}/orders/status", 
+                json={"order": order_id}, 
+                headers=headers, 
+                timeout=5
+            )
+            data = res.json()
             
-        return JSONResponse(content={
-            "status": final_status,
-            "charge": "0",
-            "start_count": "0", 
-            "remains": "0",
-            "currency": "USD"
-        })
-
-    except:
-        # في حال الفشل بالفحص، بنقله لسا Pending
-        return JSONResponse(content={"status": "Pending"})
+            # تحليل الرد
+            status = ""
+            if isinstance(data, dict):
+                if "status" in data: status = data["status"]
+                elif str(order_id) in data: status = data[str(order_id)].get("status")
+            
+            status = str(status).lower()
+            
+            # إذا لقينا كلمة تدل عالفشل، بنوقف وبنرجع Canceled فوراً
+            if "cancel" in status or "fail" in status or "error" in status:
+                return "Canceled"
+                
+        except:
+            pass
+            
+    return "Pending" # إذا مرق الوقت وما فشل، بنعتبره ماشي
 
 # -----------------------------------------------------------
-# دالة مساعدة لتنسيق الرد (Ayome Format)
+# تنسيق الرد (Ayome)
 # -----------------------------------------------------------
 def response_ayome(success, op_id, msg):
     return JSONResponse(
         status_code=200, 
         content={
             "isSuccess": success,
-            "operationId": op_id, # Null للفشل، رقم للنجاح
+            "operationId": op_id, # null للفشل
             "result": msg,
             "value": 0,
             "isDirectableToManual": False,
