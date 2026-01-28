@@ -6,7 +6,7 @@ app = FastAPI()
 
 # --- إعدادات المورد ---
 SUPPLIER_URL = "https://api.sonofutred.uk/api/v1"
-SUPPLIER_API_KEY = "YOUR_REAL_API_KEY_HERE" # ⚠️ مفتاحك الحقيقي
+SUPPLIER_API_KEY = "j5OXE9NqqCa2JoUXotEQGWDum6lmvFgA" # ⚠️ مفتاحك الحقيقي
 MY_SECRET = "NIZAR_SECURE_2026"
 
 class OrderRequest(BaseModel):
@@ -96,3 +96,4 @@ def check_status(req: CheckRequest):
 
     except Exception as e:
          return {"success": False, "message": str(e)}
+
