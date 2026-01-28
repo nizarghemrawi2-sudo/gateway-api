@@ -11,7 +11,7 @@ MY_SECRET = "NIZAR_SECURE_2026"
 
 @app.get("/")
 def home():
-    return {"status": "Online", "System": "Universal Gateway V7 🚀"}
+    return {"status": "Online", "System": "Gateway Final V8 🚀"}
 
 @app.post("/api/Buy")
 @app.get("/api/Buy")
@@ -35,32 +35,23 @@ async def process_order(request: Request):
     # 2. استخراج البيانات
     token = data.get("token")
     numberId = str(data.get("numberId", "")).strip()
-    note1 = str(data.get("note1", "")).strip() # رقم المنتج
+    note1 = str(data.get("note1", "")).strip()
     note2 = data.get("note2")       
     orderId_site = data.get("orderId")
 
-    # 3. التحقق من التوكن
+    # 3. التحقق
     if token != MY_SECRET:
         return {"status": "error", "message": "Invalid Token"}
 
-    # 4. --- القاموس الشامل (مهم جداً تعبيه) --- 📝
+    # 4. القاموس
     products_map = {
-        # موبايل ليجند
         "257": {"game": "mobilelegend", "pack": "86"},
-        
-        # ببجي (أمثلة - عدل الأرقام حسب موقعك)
-        "1001": {"game": "pubg", "pack": "60_uc"},
-        "1002": {"game": "pubg", "pack": "325_uc"},
-        
-        # فري فاير
-        "2001": {"game": "freefire", "pack": "100_diamonds"},
+        # ضيف باقي الألعاب هون
     }
 
     item = products_map.get(note1)
-    
     if not item:
-        # هذا الخطأ هو سبب الـ 0-null (المنتج غير موجود)
-        return {"status": "error", "message": f"Product ID {note1} is not defined in Gateway"}
+        return {"status": "error", "message": f"Product {note1} not defined"}
 
     game = item["game"]
     pack = item["pack"]
@@ -69,41 +60,32 @@ async def process_order(request: Request):
     final_uid = numberId
     final_zone_id = ""
 
-    # منطق خاص لـ Mobile Legends فقط
     if game == "mobilelegend":
         if note2 and str(note2) != "-" and str(note2).strip() != "":
             final_zone_id = str(note2)
-        elif " " in numberId: # فصل المسافة
+        elif " " in numberId: 
             parts = numberId.split()
             if len(parts) >= 2:
                 final_uid = parts[0]
                 final_zone_id = parts[1]
-        elif "(" in numberId: # فصل الأقواس
+        elif "(" in numberId:
             match = re.search(r'\((.*?)\)', numberId)
             if match:
                 final_zone_id = match.group(1)
                 final_uid = numberId.split('(')[0]
         
-        # تنظيف الأرقام
         final_uid = re.sub(r'\D', '', final_uid)
         final_zone_id = re.sub(r'\D', '', final_zone_id)
 
         if not final_zone_id:
-            return {"status": "error", "message": "Zone ID Missing for MLBB"}
+            return {"status": "error", "message": "Zone ID Missing"}
 
-    # 6. تجهيز البايلود حسب اللعبة
-    payload = {
-        "game": game,
-        "pack": pack,
-        "uid": final_uid
-    }
-    
-    # إضافة الزون والسيرفر فقط إذا اللعبة موبايل ليجند
+    # 6. التجهيز والإرسال
+    payload = {"game": game, "pack": pack, "uid": final_uid}
     if game == "mobilelegend":
         payload["zoneId"] = final_zone_id
         payload["server"] = "Asia"
 
-    # 7. الإرسال
     headers = {"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}
     
     try:
@@ -111,9 +93,16 @@ async def process_order(request: Request):
         result = response.json()
 
         if result.get("success"):
+            supplier_id = result["data"]["orderId"]
+            
+            # 🔥 التعديل الناري: إرضاء جميع السكربتات 🔥
             return {
-                "status": "processing",
-                "order_id": result["data"]["orderId"], # الرقم اللي بينتظره موقعك
+                "status": "success",    # بعض السكربتات بتكره كلمة processing
+                "success": True,        # احتياط
+                "order_id": supplier_id,
+                "id": supplier_id,      # أغلب السكربتات بتدور على هي
+                "order": supplier_id,   # وهاد كمان
+                "trans_id": supplier_id,
                 "api_order_id": orderId_site
             }
         else:
