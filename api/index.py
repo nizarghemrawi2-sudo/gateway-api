@@ -8,7 +8,7 @@ app = FastAPI()
 
 # --- إعدادات المورد ---
 SUPPLIER_URL = "https://api.sonofutred.uk/api/v1"
-SUPPLIER_API_KEY = "YOUR_REAL_API_KEY_HERE" # ⚠️ مفتاحك الحقيقي
+SUPPLIER_API_KEY = "j5OXE9NqqCa2JoUXotEQGWDum6lmvFgA" # ⚠️ مفتاحك الحقيقي
 MY_SECRET = "NIZAR_SECURE_2026"
 
 # 🔥 إعدادات الانتظار (Vercel Pro) 🔥
@@ -136,3 +136,4 @@ def response_ayome(success, op_id, msg):
         "isRepeatableFailedBuy": True,
         "creditAfter": -1
     })
+
