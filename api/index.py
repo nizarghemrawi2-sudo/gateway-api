@@ -94,26 +94,34 @@ async def process_order(request: Request):
 
         if result.get("success"):
             real_supplier_id = result["data"]["orderId"] # GO-xxxx
-            
-            # 👇 اللعبة هون:
-            # موقعك ما بيقبل GO-xxxx لأنها نص، ف رح نعطيه رقم عشوائي أو رقم طلبك نفسه
-            # عشان يسكت ويحفظ الطلب بنجاح
             fake_numeric_id = int(orderId_site) if orderId_site else random.randint(100000, 999999)
 
+            # 👇 الرد الشامل لكل أنواع السكربتات
             return {
+                # 1. الرد المباشر (للأنظمة البسيطة)
                 "status": "success",
                 "success": True,
-                # الخانات اللي موقعك بياخد منها الرقم (حطينا فيها رقم صحيح)
-                "order_id": fake_numeric_id, 
-                "id": fake_numeric_id,      
-                "order": fake_numeric_id,
+                "error": 0,             # بعض الأنظمة بتشيك إذا الخطأ صفر
+                "message": "Success",
+                "id": fake_numeric_id,
+                "order_id": fake_numeric_id,
                 
-                # الخانات اللي ممكن تعرضلك رسالة (حطينا فيها الرقم الحقيقي عشان تشوفه)
-                "message": f"Success! Real ID: {real_supplier_id}", 
-                "api_order_id": orderId_site
+                # 2. الرد المغلف بـ data (للأنظمة الحديثة) <-- غالباً موقعك بدو هي
+                "data": {
+                    "order_id": fake_numeric_id,
+                    "id": fake_numeric_id,
+                    "order": fake_numeric_id,
+                    "status": "success",
+                    "supplier_ref": real_supplier_id # عشان لو حب يخزنه
+                },
+
+                # 3. معلومات إضافية إلك
+                "debug_real_id": real_supplier_id
+            }
             }
         else:
             return {"status": "error", "message": result.get("error")}
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
