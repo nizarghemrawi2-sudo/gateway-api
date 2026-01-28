@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import requests
 import re
-import random # لاستخدام التوليد العشوائي
+import random
 
 app = FastAPI()
 
@@ -30,7 +30,12 @@ async def process_order(request: Request):
     except:
         pass
 
-    # 2. البيانات
+    # 2. البيانات وتوليد رقم الطلب فوراً (قبل ما نحكي مع المورد)
+    # ---------------------------------------------------------
+    # هذا الرقم خاص بالبوابة (Gateway) عشان اللوحة عندك ترتاح وتاخده
+    gateway_order_id = random.randint(10000000, 99999999) 
+    # ---------------------------------------------------------
+
     token = data.get("token")
     numberId = str(data.get("numberId", "")).strip()
     note1 = str(data.get("note1", "")).strip()
@@ -38,17 +43,18 @@ async def process_order(request: Request):
 
     # التحقق
     if token != MY_SECRET:
-        return {"error": "Invalid Token"}
+        return {"error": "Invalid Token", "order": gateway_order_id}
 
     # 3. القاموس
     products_map = {
         "257": {"game": "mobilelegend", "pack": "86"},
-        # ضيف باقي الألعاب هون
+        # ضيف باقي الألعاب
     }
 
     item = products_map.get(note1)
     if not item:
-        return {"error": "Product not found"}
+        # حتى لو المنتج غلط، بنرجع رقم عشان يتسجل باللوحة إنه فشل
+        return {"error": "Product not found", "order": gateway_order_id}
 
     game = item["game"]
     pack = item["pack"]
@@ -75,7 +81,7 @@ async def process_order(request: Request):
         final_zone_id = re.sub(r'\D', '', final_zone_id)
 
         if not final_zone_id:
-            return {"error": "Zone ID Missing"}
+            return {"error": "Zone ID Missing", "order": gateway_order_id}
 
     # 5. الإرسال للمورد
     payload = {"game": game, "pack": pack, "uid": final_uid}
@@ -87,24 +93,38 @@ async def process_order(request: Request):
     
     try:
         response = requests.post(f"{SUPPLIER_URL}/orders/game", json=payload, headers=headers)
-        result = response.json()
+        
+        # بنحاول نقرأ رد المورد
+        try:
+            result = response.json()
+        except:
+            # إذا المورد مرجع خطأ HTML (متل حالة الحظر)
+            return {
+                "error": "Supplier Error (Bad Gateway)", 
+                "order": gateway_order_id,
+                "status": "fail" # عشان اللوحة تفهم
+            }
 
         if result.get("success"):
-            # ✅✅✅ هون التعديل الجذري ✅✅✅
-            
-            # 1. توليد رقم عملية خاص بالبوت (Gateway ID)
-            # رقم عشوائي بين 10 مليون و 99 مليون (مستحيل يتكرر بالصدفة)
-            gateway_order_id = random.randint(10000000, 99999999)
-            
-            # 2. الرد على اللوحة بهذا الرقم فقط
-            # اللوحة رح تشوف رقم صحيح (Integer) ورح تنبسط وتخزنه
+            # ✅ الحالة: نجاح
             return {
-                "order": gateway_order_id, # أغلب اللوحات بتدور ع هي الكلمة
-                "id": gateway_order_id,    # وهون احتياط
+                "order": gateway_order_id, 
+                "id": gateway_order_id,    
                 "status": "success"
             }
         else:
-            return {"error": result.get("error")}
+            # ❌ الحالة: فشل من المورد (رصيد، آيدي غلط...)
+            return {
+                "error": result.get("error"), 
+                "order": gateway_order_id, # بنرجع الرقم كمان
+                "status": "fail"
+            }
 
     except Exception as e:
-        return {"error": str(e)}
+        # ❌ الحالة: فشل اتصال (مثل حظر الآيبي)
+        # هون رح يجي الرد لما تكون حاظر الآيبي
+        return {
+            "error": "Connection Failed (IP Blocked?)", 
+            "order": gateway_order_id, # خدي يا لوحة هالرقم وسجليها فشل
+            "status": "fail"
+        }
