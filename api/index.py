@@ -46,7 +46,7 @@ async def process_order(request: Request):
     # 4. تحديد المنتج
     if str(note1) == "257": 
         game = "mobilelegend"
-        pack = "86"
+        pack = "257"
     else:
         return {"status": "error", "message": f"Product {note1} not defined"}
 
@@ -114,3 +114,4 @@ async def process_order(request: Request):
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
