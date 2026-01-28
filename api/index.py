@@ -98,20 +98,24 @@ async def process_order(request: Request):
         response = requests.post(f"{SUPPLIER_URL}/orders/game", json=payload, headers=headers)
         result = response.json()
 
+      # ... (بعد ما يرجع الرد من المورد) ...
+
         if result.get("success"):
+            # ✅ الرد الجديد: خذ الرقم وتابع معنا
             return {
-                "status": "completed", 
-                "order_id": result["data"]["orderId"],
-                "api_order_id": orderId_site
+                "status": "processing",  # يعني: قيد المعالجة (مش خالص)
+                "transaction_id": result["data"]["orderId"], # رقم المورد (المهم)
+                "your_order_id": orderId_site, # رقم موقعك
+                "message": "Order submitted successfully. Please poll /api/check_status to get final result."
             }
         else:
-            # رسالة خطأ واضحة لك
+            # في حال المورد رفض فوراً
             return {
                 "status": "error", 
                 "message": result.get("error"), 
-                "sent_data": {"uid": final_uid, "zone": final_zone_id} # عشان تشوف شو انبعث
+                "sent_data": {"uid": final_uid, "zone": final_zone_id}
             }
-
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
