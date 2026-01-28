@@ -8,7 +8,7 @@ app = FastAPI()
 
 # --- إعدادات المورد ---
 SUPPLIER_URL = "https://api.sonofutred.uk/api/v1"
-SUPPLIER_API_KEY = "YOUR_REAL_API_KEY_HERE" # ⚠️ مفتاحك الحقيقي
+SUPPLIER_API_KEY = "j5OXE9NqqCa2JoUXotEQGWDum6lmvFgA" # ⚠️ مفتاحك الحقيقي
 MY_SECRET = "NIZAR_SECURE_2026"
 
 # ---------------------------------------------------------
@@ -119,3 +119,4 @@ async def check_order_status(params):
     # ⚠️ هذا الجزء بيعتمد كيف بتفحص الحالة مع المورد
     # هل الرابط هو /orders/status ؟
     # لنفترض أننا عم نسأل المورد:
+
