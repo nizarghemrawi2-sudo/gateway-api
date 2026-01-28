@@ -23,16 +23,15 @@ async def handle_request(request: Request, path_name: str):
         if isinstance(json_body, dict): data.update(json_body)
     except: pass
 
-    # فحص هل الطلب هو "فحص حالة" (Status Check)؟
+    # فحص هل هو طلب "فحص حالة"؟
     action = data.get("action")
     if action == "status" or "status" in path_name.lower():
         return check_status(data)
 
-    # --- منطق الشراء السريع ---
+    # --- معالجة طلب الشراء ---
     if data.get("token") != MY_SECRET:
         return response_ayome(False, None, "Invalid Token")
 
-    # تجهيز الطلب
     products_map = {"257": {"game": "mobilelegend", "pack": "86"}}
     item = products_map.get(str(data.get("note1", "")).strip())
     
@@ -54,50 +53,45 @@ async def handle_request(request: Request, path_name: str):
     headers = {"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}
 
     try:
-        # إرسال للمورد (انتظار 30 ثانية فقط للاستجابة الأولية)
+        # إرسال للمورد
         response = requests.post(f"{SUPPLIER_URL}/orders/game", json=payload, headers=headers, timeout=30)
-        result_json = response.json()
+        
+        # 🔥 الكاشف: محاولة قراءة الرد بذكاء 🔥
+        try:
+            result_json = response.json()
+        except:
+            # إذا فشل تحويل الرد لـ JSON، بنقرا النص الخام (أول 100 حرف)
+            # عشان نعرف إذا في حظر Cloudflare أو خطأ 500
+            raw_text = response.text[:200] 
+            return response_ayome(False, None, f"Supplier Error ({response.status_code}): {raw_text}")
         
         if result_json.get("success"):
-            # ✅ النجاح السريع
-            # بناخد الرقم وبنرد عاللوحة فوراً "باي باي"
             real_order_id = str(result_json.get("id") or result_json.get("order"))
             return response_ayome(True, real_order_id, "Order Placed (Processing)")
         else:
-            return response_ayome(False, None, result_json.get("error", "Failed Immediately"))
+            return response_ayome(False, None, result_json.get("error", "Failed From Supplier"))
             
     except Exception as e:
         return response_ayome(False, None, f"Connection Error: {str(e)}")
 
-# --- دالة فحص الحالة (اللوحة بتناديها كل دقيقة) ---
+# --- دالة فحص الحالة ---
 def check_status(data):
+    # (نفس دالة الفحص السابقة تماماً)
     order_id = data.get("order") or data.get("id")
     if not order_id: return JSONResponse({"status": "Error"})
-
     try:
         status_url = f"{SUPPLIER_URL.replace('/orders/game', '')}/orders/status"
-        res = requests.post(
-            status_url, 
-            json={"order": order_id}, 
-            headers={"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}, 
-            timeout=10
-        )
+        res = requests.post(status_url, json={"order": order_id}, headers={"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}, timeout=10)
         data = res.json()
-        
         status = "Pending"
         if isinstance(data, dict):
-            if "status" in data: status = data["status"]
-            elif str(order_id) in data: status = data[str(order_id)].get("status")
-            
+             if "status" in data: status = data["status"]
+             elif str(order_id) in data: status = data[str(order_id)].get("status")
         s = str(status).lower()
         final_status = "Pending"
-        if "cancel" in s or "fail" in s or "error" in s: final_status = "Canceled"
-        elif "complet" in s or "success" in s or "done" in s: final_status = "Completed"
-        
-        return JSONResponse(content={
-            "status": final_status,
-            "charge": "0", "start_count": "0", "remains": "0", "currency": "USD"
-        })
+        if "cancel" in s or "fail" in s: final_status = "Canceled"
+        elif "complet" in s or "success" in s: final_status = "Completed"
+        return JSONResponse(content={"status": final_status, "charge": "0", "currency": "USD"})
     except:
         return JSONResponse({"status": "Pending"})
 
