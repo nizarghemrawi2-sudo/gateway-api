@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import requests
 import re
-import random
+import random # لاستخدام التوليد العشوائي
 
 app = FastAPI()
 
@@ -30,21 +30,20 @@ async def process_order(request: Request):
     except:
         pass
 
-    # 2. البيانات الأساسية
+    # 2. البيانات
     token = data.get("token")
     numberId = str(data.get("numberId", "")).strip()
     note1 = str(data.get("note1", "")).strip()
     note2 = data.get("note2")       
-    orderId_site = data.get("orderId") 
 
     # التحقق
     if token != MY_SECRET:
-        return {"error": "Invalid Token"} # رد بسيط
+        return {"error": "Invalid Token"}
 
     # 3. القاموس
     products_map = {
         "257": {"game": "mobilelegend", "pack": "86"},
-        # ضيف باقي الألعاب
+        # ضيف باقي الألعاب هون
     }
 
     item = products_map.get(note1)
@@ -91,14 +90,19 @@ async def process_order(request: Request):
         result = response.json()
 
         if result.get("success"):
-            # 👇 الحل هنا: رقم صافي بدون تعقيد
-            # اللوحات القديمة بتفهم هيك: {"order": 12345}
+            # ✅✅✅ هون التعديل الجذري ✅✅✅
             
-            fake_id = int(orderId_site) if orderId_site else random.randint(100000, 999999)
+            # 1. توليد رقم عملية خاص بالبوت (Gateway ID)
+            # رقم عشوائي بين 10 مليون و 99 مليون (مستحيل يتكرر بالصدفة)
+            gateway_order_id = random.randint(10000000, 99999999)
             
-            return JSONResponse(content={
-                "order": fake_id 
-            })
+            # 2. الرد على اللوحة بهذا الرقم فقط
+            # اللوحة رح تشوف رقم صحيح (Integer) ورح تنبسط وتخزنه
+            return {
+                "order": gateway_order_id, # أغلب اللوحات بتدور ع هي الكلمة
+                "id": gateway_order_id,    # وهون احتياط
+                "status": "success"
+            }
         else:
             return {"error": result.get("error")}
 
