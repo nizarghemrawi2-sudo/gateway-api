@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 import requests
 import re
+import random
 
 app = FastAPI()
 
@@ -11,7 +12,7 @@ MY_SECRET = "NIZAR_SECURE_2026"
 
 @app.get("/")
 def home():
-    return {"status": "Online", "System": "Gateway Final V8 🚀"}
+    return {"status": "Online", "System": "Gateway Integer Fix V9 🚀"}
 
 @app.post("/api/Buy")
 @app.get("/api/Buy")
@@ -37,16 +38,15 @@ async def process_order(request: Request):
     numberId = str(data.get("numberId", "")).strip()
     note1 = str(data.get("note1", "")).strip()
     note2 = data.get("note2")       
-    orderId_site = data.get("orderId")
+    orderId_site = data.get("orderId") # هذا رقم الطلب بموقعك (رقم صحيح)
 
-    # 3. التحقق
     if token != MY_SECRET:
         return {"status": "error", "message": "Invalid Token"}
 
-    # 4. القاموس
+    # 3. القاموس
     products_map = {
         "257": {"game": "mobilelegend", "pack": "86"},
-        # ضيف باقي الألعاب هون
+        # ضيف باقي الألعاب
     }
 
     item = products_map.get(note1)
@@ -56,7 +56,7 @@ async def process_order(request: Request):
     game = item["game"]
     pack = item["pack"]
 
-    # 5. معالجة الآيدي والزون
+    # 4. معالجة الآيدي والزون
     final_uid = numberId
     final_zone_id = ""
 
@@ -80,7 +80,7 @@ async def process_order(request: Request):
         if not final_zone_id:
             return {"status": "error", "message": "Zone ID Missing"}
 
-    # 6. التجهيز والإرسال
+    # 5. الإرسال
     payload = {"game": game, "pack": pack, "uid": final_uid}
     if game == "mobilelegend":
         payload["zoneId"] = final_zone_id
@@ -93,16 +93,23 @@ async def process_order(request: Request):
         result = response.json()
 
         if result.get("success"):
-            supplier_id = result["data"]["orderId"]
+            real_supplier_id = result["data"]["orderId"] # GO-xxxx
             
-            # 🔥 التعديل الناري: إرضاء جميع السكربتات 🔥
+            # 👇 اللعبة هون:
+            # موقعك ما بيقبل GO-xxxx لأنها نص، ف رح نعطيه رقم عشوائي أو رقم طلبك نفسه
+            # عشان يسكت ويحفظ الطلب بنجاح
+            fake_numeric_id = int(orderId_site) if orderId_site else random.randint(100000, 999999)
+
             return {
-                "status": "success",    # بعض السكربتات بتكره كلمة processing
-                "success": True,        # احتياط
-                "order_id": supplier_id,
-                "id": supplier_id,      # أغلب السكربتات بتدور على هي
-                "order": supplier_id,   # وهاد كمان
-                "trans_id": supplier_id,
+                "status": "success",
+                "success": True,
+                # الخانات اللي موقعك بياخد منها الرقم (حطينا فيها رقم صحيح)
+                "order_id": fake_numeric_id, 
+                "id": fake_numeric_id,      
+                "order": fake_numeric_id,
+                
+                # الخانات اللي ممكن تعرضلك رسالة (حطينا فيها الرقم الحقيقي عشان تشوفه)
+                "message": f"Success! Real ID: {real_supplier_id}", 
                 "api_order_id": orderId_site
             }
         else:
