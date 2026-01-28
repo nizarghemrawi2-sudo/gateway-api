@@ -14,7 +14,7 @@ class OrderRequest(BaseModel):
 def home():
     return {"status": "Online", "System": "Gateway is Ready 🚀"}
 
-@app.post("/api/process_order")
+@app.post("/api/buy")
 def process_order(order: OrderRequest):
     # 2. الحماية: التأكد من كلمة السر
     MY_SECRET = "NIZAR_SECURE_2026"  # هاي الكلمة اللي بتعطيها للمبرمج
@@ -48,4 +48,5 @@ def process_order(order: OrderRequest):
         "message": "Order processed",
         "original_product": order.product_code,
         "supplier_product": supplier_code  # لنعرف شو طلبنا من المورد
+
     }
