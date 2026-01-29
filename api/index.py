@@ -6,7 +6,7 @@ app = FastAPI()
 
 # --- إعدادات المورد ---
 SUPPLIER_URL = "https://api.sonofutred.uk/api/v1"
-SUPPLIER_API_KEY = "j5OXE9NqqCa2JoUXotEQGWDum6lmvFgA" # ⚠️ مفتاحك الحقيقي
+SUPPLIER_API_KEY = "YOUR_REAL_API_KEY_HERE" # ⚠️ مفتاحك الحقيقي
 MY_SECRET = "NIZAR_SECURE_2026"
 
 @app.api_route("/api/{path_name:path}", methods=["GET", "POST"])
@@ -23,12 +23,11 @@ async def handle_request(request: Request, path_name: str):
         if isinstance(json_body, dict): data.update(json_body)
     except: pass
 
-    # فحص هل هو طلب "فحص حالة"؟
-    action = data.get("action")
-    if action == "status" or "status" in path_name.lower():
+    # معالجة طلبات فحص الحالة
+    if data.get("action") == "status" or "status" in path_name.lower():
         return check_status(data)
 
-    # --- معالجة طلب الشراء ---
+    # 2. التحقق
     if data.get("token") != MY_SECRET:
         return response_ayome(False, None, "Invalid Token")
 
@@ -53,51 +52,58 @@ async def handle_request(request: Request, path_name: str):
     headers = {"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}
 
     try:
-        # إرسال للمورد
+        # 3. إرسال الطلب للمورد
+        # مهلة 30 ثانية فقط لرد المورد الأولي
         response = requests.post(f"{SUPPLIER_URL}/orders/game", json=payload, headers=headers, timeout=30)
         
-        # 🔥 الكاشف: محاولة قراءة الرد بذكاء 🔥
         try:
-            result_json = response.json()
+            res_json = response.json()
         except:
-            # إذا فشل تحويل الرد لـ JSON، بنقرا النص الخام (أول 100 حرف)
-            # عشان نعرف إذا في حظر Cloudflare أو خطأ 500
-            raw_text = response.text[:200] 
-            return response_ayome(False, None, f"Supplier Error ({response.status_code}): {raw_text}")
+            return response_ayome(False, None, f"Error: {response.text[:100]}")
         
-        if result_json.get("success"):
-            real_order_id = str(result_json.get("id") or result_json.get("order"))
+        # 🔥 التعديل الجوهري هنا 🔥
+        # بنشيك: هل نجح؟ أو هل الحالة processing؟
+        # بالحالتين بنعتبره نجاح عشان اللوحة تحفظ الرقم
+        is_ok = res_json.get("success") == True or \
+                res_json.get("status") == "processing" or \
+                "process" in str(res_json.get("message", "")).lower()
+
+        if is_ok:
+            real_order_id = str(res_json.get("id") or res_json.get("order"))
+            # ✅ بنرد على اللوحة فوراً: تم الاستلام
             return response_ayome(True, real_order_id, "Order Placed (Processing)")
         else:
-            return response_ayome(False, None, result_json.get("error", "Failed From Supplier"))
+            return response_ayome(False, None, res_json.get("error", "Refused"))
             
     except Exception as e:
-        return response_ayome(False, None, f"Connection Error: {str(e)}")
+        return response_ayome(False, None, f"Connect Error: {str(e)}")
 
-# --- دالة فحص الحالة ---
+# --- دالة فحص الحالة (للـ Cron Job) ---
 def check_status(data):
-    # (نفس دالة الفحص السابقة تماماً)
     order_id = data.get("order") or data.get("id")
     if not order_id: return JSONResponse({"status": "Error"})
     try:
         status_url = f"{SUPPLIER_URL.replace('/orders/game', '')}/orders/status"
         res = requests.post(status_url, json={"order": order_id}, headers={"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}, timeout=10)
         data = res.json()
+        
         status = "Pending"
         if isinstance(data, dict):
              if "status" in data: status = data["status"]
              elif str(order_id) in data: status = data[str(order_id)].get("status")
+        
         s = str(status).lower()
         final_status = "Pending"
-        if "cancel" in s or "fail" in s: final_status = "Canceled"
-        elif "complet" in s or "success" in s: final_status = "Completed"
+        if "cancel" in s or "fail" in s or "error" in s: final_status = "Canceled"
+        elif "complet" in s or "success" in s or "done" in s: final_status = "Completed"
+        
         return JSONResponse(content={"status": final_status, "charge": "0", "currency": "USD"})
     except:
         return JSONResponse({"status": "Pending"})
 
 def response_ayome(success, op_id, msg):
     return JSONResponse(status_code=200, content={
-        "isSuccess": success,
+        "isSuccess": success, # إذا true اللوحة بتحفظ الطلب
         "operationId": op_id,
         "result": msg,
         "value": 0,
