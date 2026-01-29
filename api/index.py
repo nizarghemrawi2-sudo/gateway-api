@@ -1,120 +1,229 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-import requests
-import asyncio
+import json
 import time
+import random
+import string
+import re
+from flask import Flask, request, jsonify
+import requests
 
-app = FastAPI()
+app = Flask(__name__)
 
-# --- إعدادات المورد ---
-SUPPLIER_URL = "https://api.sonofutred.uk/api/v1"
-SUPPLIER_API_KEY = "j5OXE9NqqCa2JoUXotEQGWDum6lmvFgA" # ⚠️ مفتاحك الحقيقي
-MY_SECRET = "NIZAR_SECURE_2026"
+BASE_URL = "https://api.umanageapp.uk/api/v1/external"
 
-# 🔥 التوقيت: أقصى مدة انتظار قبل ما لوحتك تفصل (90 ثانية)
-MAX_WAIT_TIME = 90 
+API_KEY = "pk_live_11ae8d782682b05262b790b562c4c7a0e18fb0b030a3299d" 
+API_SECRET = "sk_live_1add57867178ac564018c1c7f9cf057ea304d4b139cbec320bca0c85f6c04651"
 
-@app.api_route("/api/{path_name:path}", methods=["GET", "POST"])
-async def handle_request(request: Request, path_name: str):
-    
-    # تجميع البيانات
-    data = dict(request.query_params)
+HEADERS = {
+    "Content-Type": "application/json",
+    "X-API-Key": API_KEY,
+    "X-API-Secret": API_SECRET
+}
+
+STORE_ID = None
+ORDERS_DB = {}
+
+
+def get_store_id():
+    global STORE_ID
     try:
-        form = await request.form()
-        data.update(form)
-    except: pass
-    try:
-        json_body = await request.json()
-        if isinstance(json_body, dict): data.update(json_body)
-    except: pass
-
-    # معالجة فحص الحالة
-    if data.get("action") == "status": return check_status(data)
-    if data.get("token") != MY_SECRET: return response_ayome(False, None, "Invalid Token")
-
-    products_map = {"257": {"game": "mobilelegend", "pack": "86"}}
-    item = products_map.get(str(data.get("note1", "")).strip())
-    if not item: return response_ayome(False, None, "Product Not Found")
-
-    game, pack = item["game"], item["pack"]
-    numberId = str(data.get("numberId", "")).strip()
-    final_uid = "".join(filter(str.isdigit, numberId.split()[0] if " " in numberId else numberId))
-    
-    payload = {"game": game, "pack": pack, "uid": final_uid}
-    headers = {"X-API-Key": SUPPLIER_API_KEY, "Content-Type": "application/json"}
-
-    try:
-        # 1. إرسال الطلب للمورد
-        response = requests.post(f"{SUPPLIER_URL}/orders/game", json=payload, headers=headers, timeout=30)
-        
-        try:
-            res_json = response.json()
-        except:
-            return response_ayome(False, None, f"Supplier Error (HTML/Block)")
-
-        # هل المورد قبل الطلب؟ (حتى لو Processing)
-        # ملاحظة: هون ما بنرد عاللوحة، بس بنحفظ الآيدي وبندخل بـ Loop
-        is_accepted = res_json.get("success") or \
-                      res_json.get("status") == "processing" or \
-                      "process" in str(res_json.get("message", "")).lower()
-
-        if is_accepted:
-            real_order_id = str(res_json.get("id") or res_json.get("order"))
-            
-            # 👇👇👇 هون السر! لن نغلق الخط! 👇👇👇
-            # بدل ما نرجع response فوراً، رح ندخل بحلقة انتظار إجبارية
-            
-            start_time = time.time()
-            
-            while (time.time() - start_time) < MAX_WAIT_TIME:
-                
-                # نام 5 ثواني (والخط لسا مفتوح غصب عنه)
-                await asyncio.sleep(5)
-                
-                # اسأل المورد شو صار
-                status = check_supplier_status(real_order_id)
-                
-                # إذا النتيجة صارت نهائية -> هلق بس بنسمح للبوت يسكر الخط
-                if status == "Canceled":
-                    return response_ayome(False, None, "Failed by Supplier")
-                elif status == "Completed":
-                    return response_ayome(True, real_order_id, "Success")
-                
-                # إذا لسا Processing -> ممنوع يسكر الخط، عيد اللفة...
-            
-            # ⚠️ إذا وصلنا لهون، يعني مرقت 90 ثانية والمورد لسا عم يشتغل
-            # مضطرين نرد "نجاح" هلق عشان لوحتك ما تفصل وتعطي Error
-            return response_ayome(True, real_order_id, "Processing (Saved)")
-
-        else:
-            return response_ayome(False, None, res_json.get("error", "Refused"))
-            
+        print("[*] Connecting to Provider...")
+        res = requests.get(f"{BASE_URL}/stores", headers=HEADERS, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get('success') and data.get('stores'):
+                STORE_ID = data['stores'][0]['store_id']
+                print(f"[+] Connected! Store ID: {STORE_ID}")
+                return STORE_ID
+        print(f"[!] Auth Failed.")
+        return None
     except Exception as e:
-        return response_ayome(False, None, f"Error: {str(e)}")
+        print(f"[!] Exception: {e}")
+        return None
 
-# --- دوال مساعدة ---
-def check_supplier_status(order_id):
+
+def generate_order_id():
+    random_part = ''.join(random.choices(string.hexdigits.lower(), k=16))
+    return f"ID_{random_part}"
+
+
+# ============================================
+# Response Builders - Play4Cards Format
+# ============================================
+
+def accept_response(order_id, message="Order completed successfully", price=0):
+    return {
+        "status": "OK",
+        "data": {
+            "order_id": str(order_id),
+            "status": "accept",
+            "price": price,
+            "data": {},
+            "replay_api": [{"replay": [message]}]
+        }
+    }
+
+
+def reject_response(order_id, message="Order failed"):
+    return {
+        "status": "OK",
+        "data": {
+            "order_id": str(order_id),
+            "status": "reject",
+            "price": 0,
+            "data": {},
+            "replay_api": [{"replay": [message]}]
+        }
+    }
+
+
+# ============================================
+# Main Buy API
+# ============================================
+@app.route('/api/Buy', methods=['GET', 'POST'])
+def buy_api():
+    token_nizar = request.args.get('token')
+    number_id = request.args.get('numberId')
+    bundle_id = request.args.get('note1')
+
+    my_order_id = generate_order_id()
+
+    if token_nizar != "NIZAR_SECURE_2026":
+        return jsonify(reject_response(my_order_id, "Security Error")), 200
+
+    current_store_id = STORE_ID
+    if not current_store_id:
+        current_store_id = get_store_id()
+    
+    if not current_store_id:
+        return jsonify(reject_response(my_order_id, "System Error")), 200
+
+    raw_order_id = request.args.get('orderId', 'unknown')
+    if '|' in str(raw_order_id):
+        dashboard_order_id = str(raw_order_id).split('|')[0].strip()
+    else:
+        dashboard_order_id = str(raw_order_id)
+
+    # تنظيف الرقم من أي حروف مخفية
+    clean_number = re.sub(r'[^\d]', '', str(number_id))
+    
+    print(f"\n{'='*50}")
+    print(f"[*] Original number: {repr(number_id)}")
+    print(f"[*] Clean number: {clean_number}")
+    print(f"[*] Bundle ID: {bundle_id}")
+    print(f"[*] Dashboard Order ID: {dashboard_order_id}")
+
+    payload = {
+        "bundle_id": int(bundle_id),
+        "secondary_number": clean_number,
+        "app_user_reference": dashboard_order_id
+    }
+
     try:
-        status_url = f"{SUPPLIER_URL.replace('/orders/game', '')}/orders/status"
-        res = requests.post(status_url, json={"order": order_id}, headers={"X-API-Key": SUPPLIER_API_KEY}, timeout=10)
+        res = requests.post(
+            f"{BASE_URL}/stores/{current_store_id}/orders",
+            headers=HEADERS,
+            json=payload,
+            timeout=15
+        )
+
         data = res.json()
+        print(f"[DEBUG] Response: {json.dumps(data, indent=2, ensure_ascii=False)}")
         
-        st = ""
-        if isinstance(data, dict):
-            if "status" in data: st = data["status"]
-            elif str(order_id) in data: st = data[str(order_id)].get("status")
+        if not data.get('success'):
+            error_msg = data.get('error', {}).get('message', 'Unknown error')
+            print(f"[!] REJECT: {error_msg}")
+            return jsonify(reject_response(my_order_id, error_msg)), 200
+
+        order_data = data.get('order', {})
+        provider_order_id = order_data.get('order_id')
+        status = order_data.get('status')
+        
+        print(f"[*] Provider Order ID: {provider_order_id}, Status: {status}")
+
+        # انتظار النتيجة
+        for i in range(40):
+            print(f"[*] Check {i+1}/40 - Status: {status}")
             
-        s = str(st).lower()
-        if "cancel" in s or "fail" in s or "error" in s: return "Canceled"
-        if "complet" in s or "success" in s: return "Completed"
-    except: pass
-    return "Pending"
+            if status == 'completed':
+                print(f"[+] ACCEPT!")
+                return jsonify(accept_response(my_order_id, "Order completed successfully")), 200
+            
+            if status == 'failed':
+                reason = order_data.get('alfa_response')
+                if isinstance(reason, dict):
+                    reason = reason.get('message') or "Failed"
+                reason = str(reason) if reason else "Unknown"
+                
+                if "Please enter an Alfa line number different than the one related to this account" in reason:
+                    reason = "Error: Cannot recharge same number (Self-Recharge)"
+                
+                print(f"[!] REJECT: {reason}")
+                return jsonify(reject_response(my_order_id, reason)), 200
 
-def check_status(data): return JSONResponse({"status": "Pending"})
+            time.sleep(3)
+            
+            try:
+                check_res = requests.get(
+                    f"{BASE_URL}/stores/{current_store_id}/orders/{provider_order_id}", 
+                    headers=HEADERS, 
+                    timeout=10
+                )
+                if check_res.status_code == 200:
+                    check_data = check_res.json()
+                    order_data = check_data.get('order', {})
+                    status = order_data.get('status')
+            except Exception as e:
+                print(f"[!] Check Error: {e}")
 
-def response_ayome(success, op_id, msg):
-    return JSONResponse(status_code=200, content={
-        "isSuccess": success, "operationId": op_id, "result": msg, 
-        "value": 0, "isDirectableToManual": False, "isRepeatableFailedBuy": True
-    })
+        # Timeout
+        print("[!] TIMEOUT -> REJECT")
+        return jsonify(reject_response(my_order_id, "Timeout")), 200
 
+    except Exception as e:
+        print(f"[!] EXCEPTION: {e}")
+        return jsonify(reject_response(my_order_id, str(e))), 200
+
+
+# ============================================
+# Query API
+# ============================================
+@app.route('/api/Check', methods=['GET', 'POST'])
+@app.route('/api/check', methods=['GET', 'POST'])
+@app.route('/api/Query', methods=['GET', 'POST'])
+def check_order():
+    token = request.args.get('token')
+    if token != "NIZAR_SECURE_2026":
+        return jsonify(reject_response(generate_order_id(), "Security Error")), 200
+    
+    order_id = request.args.get('orderId') or request.args.get('order_id')
+    
+    if not order_id:
+        return jsonify(reject_response(generate_order_id(), "Missing orderId")), 200
+    
+    if '|' in str(order_id):
+        order_id = str(order_id).split('|')[0].strip()
+    
+    print(f"[*] Query: {order_id}")
+    
+    if order_id in ORDERS_DB:
+        order = ORDERS_DB[order_id]
+        if order['status'] == 'accept':
+            return jsonify(accept_response(order['order_id'], "Success")), 200
+        else:
+            return jsonify(reject_response(order['order_id'], order['message'] or "Failed")), 200
+    
+    return jsonify(reject_response(generate_order_id(), "Order not found")), 200
+
+
+@app.route('/api/health', methods=['GET'])
+@app.route('/', methods=['GET'])
+def health():
+    return jsonify({"status": "OK", "store_id": STORE_ID}), 200
+
+
+if __name__ == '__main__':
+    print("="*50)
+    print("  Play4Cards API")
+    print("="*50)
+    get_store_id()
+    app.run(host='0.0.0.0', port=5050, debug=False)
