@@ -7,8 +7,8 @@ import time
 app = FastAPI()
 
 # --- إعدادات المورد ---
-SUPPLIER_URL = "j5OXE9NqqCa2JoUXotEQGWDum6lmvFgA"
-SUPPLIER_API_KEY = "YOUR_REAL_API_KEY_HERE" # ⚠️ مفتاحك الحقيقي
+SUPPLIER_URL = "https://api.sonofutred.uk/api/v1"
+SUPPLIER_API_KEY = "j5OXE9NqqCa2JoUXotEQGWDum6lmvFgA" # ⚠️ مفتاحك الحقيقي
 MY_SECRET = "NIZAR_SECURE_2026"
 
 # 🔥 التوقيت: أقصى مدة انتظار قبل ما لوحتك تفصل (90 ثانية)
@@ -117,3 +117,4 @@ def response_ayome(success, op_id, msg):
         "isSuccess": success, "operationId": op_id, "result": msg, 
         "value": 0, "isDirectableToManual": False, "isRepeatableFailedBuy": True
     })
+
